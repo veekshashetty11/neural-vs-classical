@@ -36,3 +36,35 @@ export type SimulationEvent =
   | { event: 'path'; cell: Coordinate }
   | { event: 'complete' }
   | { event: 'error'; message: string }
+
+export type RLAction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
+
+export interface QLearningTrainingRequest extends AlgorithmRequest {
+  episodes: number
+  learning_rate: number
+  discount_factor: number
+  epsilon: number
+  epsilon_decay: number
+  min_epsilon: number
+}
+
+export interface QLearningTrainingResponse {
+  training_id: string
+  websocket_url: string
+}
+
+export interface TrainingEpisodePoint {
+  episode: number
+  steps: number
+  reward: number
+}
+
+export type QValues = Record<RLAction, number>
+
+export type RLTrainingEvent =
+  | { event: 'episode_start'; episode: number }
+  | { event: 'agent_move'; position: Coordinate }
+  | { event: 'q_values'; state: Coordinate; values: QValues }
+  | { event: 'episode_complete'; episode: number; steps: number; reward: number }
+  | { event: 'training_complete' }
+  | { event: 'error'; message: string }

@@ -2,6 +2,7 @@ import type { Coordinate, MazeGenerateResponse } from '../types/maze'
 
 interface MazeGridProps {
   maze: MazeGenerateResponse
+  agentCell?: Coordinate | null
   pathCells?: Set<string>
   visitedCells?: Set<string>
 }
@@ -14,7 +15,12 @@ function sameCell(a: Coordinate, row: number, col: number) {
   return a[0] === row && a[1] === col
 }
 
-export function MazeGrid({ maze, pathCells = new Set(), visitedCells = new Set() }: MazeGridProps) {
+export function MazeGrid({
+  maze,
+  agentCell = null,
+  pathCells = new Set(),
+  visitedCells = new Set(),
+}: MazeGridProps) {
   const columnCount = maze.grid[0]?.length ?? 0
 
   return (
@@ -34,8 +40,11 @@ export function MazeGrid({ maze, pathCells = new Set(), visitedCells = new Set()
             const isWall = cell === 1
             const isPath = pathCells.has(key)
             const isVisited = visitedCells.has(key)
+            const isAgent = agentCell !== null && sameCell(agentCell, row, col)
 
-            const cellClass = isStart
+            const cellClass = isAgent
+              ? 'bg-fuchsia-400 shadow-fuchsia-300/60'
+              : isStart
               ? 'bg-emerald-400 shadow-emerald-400/40'
               : isGoal
                 ? 'bg-rose-500 shadow-rose-500/40'
@@ -52,7 +61,7 @@ export function MazeGrid({ maze, pathCells = new Set(), visitedCells = new Set()
                 key={key}
                 type="button"
                 className={`aspect-square rounded-[3px] shadow-sm transition-colors duration-150 ${cellClass}`}
-                aria-label={`Cell ${row}, ${col}${isStart ? ', start' : isGoal ? ', goal' : isPath ? ', final path' : isVisited ? ', visited' : isWall ? ', wall' : ', empty'}`}
+                aria-label={`Cell ${row}, ${col}${isAgent ? ', agent' : isStart ? ', start' : isGoal ? ', goal' : isPath ? ', final path' : isVisited ? ', visited' : isWall ? ', wall' : ', empty'}`}
               />
             )
           }),
