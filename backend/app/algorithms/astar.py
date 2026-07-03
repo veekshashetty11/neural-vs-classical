@@ -4,6 +4,7 @@ import heapq
 from time import perf_counter
 
 from app.algorithms.grid_environment import Cell, GridEnvironment
+from app.algorithms.path_utils import reconstruct_path
 from app.models.algorithm import AlgorithmResponse
 
 
@@ -11,17 +12,6 @@ def manhattan_distance(cell: Cell, goal: Cell) -> int:
     """Estimate remaining cost using row/column distance on a grid."""
 
     return abs(cell[0] - goal[0]) + abs(cell[1] - goal[1])
-
-
-def reconstruct_path(came_from: dict[Cell, Cell], current: Cell) -> list[Cell]:
-    """Walk parent pointers from goal back to start, then return start-to-goal."""
-
-    path = [current]
-    while current in came_from:
-        current = came_from[current]
-        path.append(current)
-    path.reverse()
-    return path
 
 
 def run_astar(environment: GridEnvironment) -> AlgorithmResponse:
@@ -38,12 +28,7 @@ def run_astar(environment: GridEnvironment) -> AlgorithmResponse:
     goal = environment.goal
 
     if goal is None or not environment.is_valid_cell(start) or not environment.is_valid_cell(goal):
-        return AlgorithmResponse(
-            visited_order=[],
-            path=[],
-            nodes_explored=0,
-            execution_ms=(perf_counter() - started_at) * 1000,
-        )
+        return AlgorithmResponse(visited_order=[], path=[], nodes_explored=0, execution_ms=0)
 
     visited_order: list[Cell] = []
     came_from: dict[Cell, Cell] = {}
@@ -53,12 +38,10 @@ def run_astar(environment: GridEnvironment) -> AlgorithmResponse:
     # the same f-score, avoiding direct tuple comparison surprises later.
     counter = 0
     open_set: list[tuple[int, int, Cell]] = [(manhattan_distance(start, goal), counter, start)]
-    queued: set[Cell] = {start}
     explored: set[Cell] = set()
 
     while open_set:
         _, _, current = heapq.heappop(open_set)
-        queued.discard(current)
 
         if current in explored:
             continue
@@ -84,7 +67,6 @@ def run_astar(environment: GridEnvironment) -> AlgorithmResponse:
             priority = tentative_cost + manhattan_distance(neighbor, goal)
             counter += 1
             heapq.heappush(open_set, (priority, counter, neighbor))
-            queued.add(neighbor)
 
     return AlgorithmResponse(
         visited_order=visited_order,

@@ -2,6 +2,8 @@ export type MazeCellValue = 0 | 1
 
 export type Coordinate = [number, number]
 
+export type AlgorithmName = 'bfs' | 'dfs' | 'dijkstra' | 'astar'
+
 export interface MazeGenerateRequest {
   rows: 10 | 20 | 30
   cols: 10 | 20 | 30
@@ -23,4 +25,8 @@ export interface AlgorithmResult {
   path: Coordinate[]
   nodes_explored: number
   execution_ms: number
+}
+
+export interface AlgorithmRun extends AlgorithmResult {
+  algorithm: AlgorithmName
 }

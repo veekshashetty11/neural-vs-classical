@@ -1,18 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { MazeGrid, cellKey } from './components/MazeGrid'
-import { runAstar } from './services/algorithmApi'
+import { runAlgorithm } from './services/algorithmApi'
 import { generateMaze } from './services/mazeApi'
-import type { AlgorithmResult, Coordinate, MazeGenerateResponse } from './types/maze'
+import type {
+  AlgorithmName,
+  AlgorithmResult,
+  AlgorithmRun,
+  Coordinate,
+  MazeGenerateResponse,
+} from './types/maze'
 
 const ANIMATION_STEP_MS = 100
 
+const ALGORITHM_LABELS: Record<AlgorithmName, string> = {
+  bfs: 'BFS',
+  dfs: 'DFS',
+  dijkstra: 'Dijkstra',
+  astar: 'A*',
+}
+
+const ALGORITHM_OPTIONS: AlgorithmName[] = ['bfs', 'dfs', 'dijkstra', 'astar']
+
 function App() {
   const [maze, setMaze] = useState<MazeGenerateResponse | null>(null)
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState<AlgorithmName>('astar')
   const [isLoading, setIsLoading] = useState(false)
   const [isRunningAlgorithm, setIsRunningAlgorithm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [algorithmResult, setAlgorithmResult] = useState<AlgorithmResult | null>(null)
+  const [comparisonRuns, setComparisonRuns] = useState<AlgorithmRun[]>([])
   const [animatedVisited, setAnimatedVisited] = useState<Coordinate[]>([])
   const [animatedPath, setAnimatedPath] = useState<Coordinate[]>([])
   const animationTimers = useRef<number[]>([])
@@ -71,6 +88,7 @@ function App() {
     setIsLoading(true)
     setError(null)
     resetVisualization()
+    setComparisonRuns([])
 
     try {
       const nextMaze = await generateMaze({
@@ -90,9 +108,9 @@ function App() {
     }
   }
 
-  async function handleRunAstar() {
+  async function handleRunAlgorithm() {
     if (!maze) {
-      setError('Generate a maze before running A*.')
+      setError('Generate a maze before running an algorithm.')
       return
     }
 
@@ -101,12 +119,18 @@ function App() {
     resetVisualization()
 
     try {
-      const result = await runAstar({ grid: maze.grid })
+      const result = await runAlgorithm(selectedAlgorithm, { grid: maze.grid })
       setAlgorithmResult(result)
+      setComparisonRuns((current) => [
+        { algorithm: selectedAlgorithm, ...result },
+        ...current.filter((run) => run.algorithm !== selectedAlgorithm),
+      ])
       playAlgorithmAnimation(result)
     } catch (caughtError) {
       setError(
-        caughtError instanceof Error ? caughtError.message : 'Unable to run A* right now.',
+        caughtError instanceof Error
+          ? caughtError.message
+          : `Unable to run ${ALGORITHM_LABELS[selectedAlgorithm]} right now.`,
       )
     } finally {
       setIsRunningAlgorithm(false)
@@ -127,11 +151,24 @@ function App() {
             </h1>
 
             <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-              Generate a maze, then watch A* explore the grid and trace the final path with a timed visualization.
+              Generate a maze, choose a classical solver, and watch exploration and final path playback on the same grid.
             </p>
           </div>
 
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+          <div className="grid w-full gap-3 sm:w-auto sm:grid-cols-[160px_auto_auto]">
+            <select
+              value={selectedAlgorithm}
+              onChange={(event) => setSelectedAlgorithm(event.target.value as AlgorithmName)}
+              disabled={isLoading || isRunningAlgorithm}
+              className="rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-100 outline-none transition focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/40 disabled:cursor-not-allowed disabled:text-slate-500 sm:text-base"
+              aria-label="Choose pathfinding algorithm"
+            >
+              {ALGORITHM_OPTIONS.map((algorithm) => (
+                <option key={algorithm} value={algorithm}>
+                  {ALGORITHM_LABELS[algorithm]}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={handleStartSimulation}
@@ -142,58 +179,91 @@ function App() {
             </button>
             <button
               type="button"
-              onClick={handleRunAstar}
+              onClick={handleRunAlgorithm}
               disabled={!maze || isLoading || isRunningAlgorithm}
               className="rounded-lg border border-yellow-300/50 bg-yellow-300/10 px-6 py-3 text-sm font-semibold text-yellow-100 transition hover:bg-yellow-300/20 focus:outline-none focus:ring-2 focus:ring-yellow-200 focus:ring-offset-2 focus:ring-offset-[#05070b] disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500 sm:text-base"
             >
-              {isRunningAlgorithm ? 'Running A*...' : 'Run A*'}
+              {isRunningAlgorithm ? `Running ${ALGORITHM_LABELS[selectedAlgorithm]}...` : 'Run Simulation'}
             </button>
           </div>
         </header>
 
-        <section className="grid flex-1 gap-8 py-8 lg:grid-cols-[280px_1fr] lg:items-start">
-          <aside className="rounded-lg border border-slate-800 bg-slate-900/50 p-5">
-            <h2 className="text-lg font-semibold text-white">Maze Environment</h2>
-            <dl className="mt-5 space-y-4 text-sm text-slate-300">
-              <div className="flex items-center justify-between gap-4">
-                <dt>Size</dt>
-                <dd className="font-medium text-slate-100">20 x 20</dd>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt>Obstacle density</dt>
-                <dd className="font-medium text-slate-100">25%</dd>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt>Start</dt>
-                <dd className="font-medium text-emerald-300">[0, 0]</dd>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt>Goal</dt>
-                <dd className="font-medium text-rose-300">[19, 19]</dd>
-              </div>
-            </dl>
+        <section className="grid flex-1 gap-8 py-8 lg:grid-cols-[320px_1fr] lg:items-start">
+          <aside className="space-y-6">
+            <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-5">
+              <h2 className="text-lg font-semibold text-white">Maze Environment</h2>
+              <dl className="mt-5 space-y-4 text-sm text-slate-300">
+                <div className="flex items-center justify-between gap-4">
+                  <dt>Size</dt>
+                  <dd className="font-medium text-slate-100">20 x 20</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt>Obstacle density</dt>
+                  <dd className="font-medium text-slate-100">25%</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt>Start</dt>
+                  <dd className="font-medium text-emerald-300">[0, 0]</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt>Goal</dt>
+                  <dd className="font-medium text-rose-300">[19, 19]</dd>
+                </div>
+              </dl>
+            </section>
 
-            <h2 className="mt-8 text-lg font-semibold text-white">A* Metrics</h2>
-            <dl className="mt-5 space-y-4 text-sm text-slate-300">
-              <div className="flex items-center justify-between gap-4">
-                <dt>Nodes explored</dt>
-                <dd className="font-medium text-slate-100">
-                  {algorithmResult?.nodes_explored ?? '-'}
-                </dd>
+            <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-5">
+              <h2 className="text-lg font-semibold text-white">Current Metrics</h2>
+              <dl className="mt-5 space-y-4 text-sm text-slate-300">
+                <div className="flex items-center justify-between gap-4">
+                  <dt>Algorithm</dt>
+                  <dd className="font-medium text-slate-100">{ALGORITHM_LABELS[selectedAlgorithm]}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt>Nodes explored</dt>
+                  <dd className="font-medium text-slate-100">
+                    {algorithmResult?.nodes_explored ?? '-'}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt>Path length</dt>
+                  <dd className="font-medium text-slate-100">
+                    {algorithmResult?.path.length ?? '-'}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt>Execution time</dt>
+                  <dd className="font-medium text-slate-100">
+                    {algorithmResult ? `${algorithmResult.execution_ms.toFixed(2)} ms` : '-'}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-5">
+              <h2 className="text-lg font-semibold text-white">Comparison</h2>
+              <div className="mt-5 space-y-3">
+                {comparisonRuns.length > 0 ? (
+                  comparisonRuns.map((run) => (
+                    <div
+                      key={run.algorithm}
+                      className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-3 font-semibold text-white">
+                        <span>{ALGORITHM_LABELS[run.algorithm]}</span>
+                        <span>{run.execution_ms.toFixed(2)} ms</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-slate-300">
+                        <span>{run.nodes_explored} nodes</span>
+                        <span>{run.path.length} path cells</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-400">Run algorithms to compare their search behavior.</p>
+                )}
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt>Path length</dt>
-                <dd className="font-medium text-slate-100">
-                  {algorithmResult?.path.length ?? '-'}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt>Execution time</dt>
-                <dd className="font-medium text-slate-100">
-                  {algorithmResult ? `${algorithmResult.execution_ms.toFixed(2)} ms` : '-'}
-                </dd>
-              </div>
-            </dl>
+            </section>
           </aside>
 
           <div className="flex min-h-[420px] items-center justify-center">
