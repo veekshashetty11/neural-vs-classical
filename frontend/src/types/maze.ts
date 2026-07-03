@@ -30,3 +30,14 @@ export interface AlgorithmResult {
 export interface AlgorithmRun extends AlgorithmResult {
   algorithm: AlgorithmName
 }
+
+export type SimulationEvent =
+  | { event: 'visit'; cell: Coordinate }
+  | { event: 'path'; cell: Coordinate }
+  | {
+      event: 'complete'
+      nodes_explored?: number
+      path_length?: number
+      execution_ms?: number
+    }
+  | { event: 'error'; message: string }

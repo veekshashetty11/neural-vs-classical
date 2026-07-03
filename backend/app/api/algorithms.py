@@ -1,44 +1,41 @@
 from fastapi import APIRouter
 
-from app.algorithms.astar import run_astar
-from app.algorithms.bfs import run_bfs
-from app.algorithms.dfs import run_dfs
-from app.algorithms.dijkstra import run_dijkstra
 from app.models.algorithm import AlgorithmRequest, AlgorithmResponse, environment_from_grid
+from app.services.solver_registry import get_solver
 
 router = APIRouter(prefix="/algorithms", tags=["algorithms"])
 
 
-def solve(payload: AlgorithmRequest, solver) -> AlgorithmResponse:
+def solve(payload: AlgorithmRequest, algorithm: str) -> AlgorithmResponse:
     """Build the environment once and pass it to the selected solver."""
 
     environment = environment_from_grid(payload.grid)
-    return solver(environment)
+    return get_solver(algorithm)(environment)
 
 
 @router.post("/astar", response_model=AlgorithmResponse)
 def solve_with_astar(payload: AlgorithmRequest) -> AlgorithmResponse:
     """Solve the submitted maze with A* and return visualization events."""
 
-    return solve(payload, run_astar)
+    return solve(payload, "astar")
 
 
 @router.post("/bfs", response_model=AlgorithmResponse)
 def solve_with_bfs(payload: AlgorithmRequest) -> AlgorithmResponse:
     """Solve the submitted maze with breadth-first search."""
 
-    return solve(payload, run_bfs)
+    return solve(payload, "bfs")
 
 
 @router.post("/dfs", response_model=AlgorithmResponse)
 def solve_with_dfs(payload: AlgorithmRequest) -> AlgorithmResponse:
     """Solve the submitted maze with depth-first search."""
 
-    return solve(payload, run_dfs)
+    return solve(payload, "dfs")
 
 
 @router.post("/dijkstra", response_model=AlgorithmResponse)
 def solve_with_dijkstra(payload: AlgorithmRequest) -> AlgorithmResponse:
     """Solve the submitted maze with Dijkstra's algorithm."""
 
-    return solve(payload, run_dijkstra)
+    return solve(payload, "dijkstra")

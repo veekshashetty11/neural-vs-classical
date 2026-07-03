@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { MazeGrid, cellKey } from './components/MazeGrid'
-import { runAlgorithm } from './services/algorithmApi'
 import { generateMaze } from './services/mazeApi'
+import { connectSimulationSocket, type SimulationSocketControl } from './services/simulationSocket'
 import type {
   AlgorithmName,
   AlgorithmResult,
   AlgorithmRun,
   Coordinate,
   MazeGenerateResponse,
+  SimulationEvent,
 } from './types/maze'
-
-const ANIMATION_STEP_MS = 100
 
 const ALGORITHM_LABELS: Record<AlgorithmName, string> = {
   bfs: 'BFS',
@@ -27,12 +26,15 @@ function App() {
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<AlgorithmName>('astar')
   const [isLoading, setIsLoading] = useState(false)
   const [isRunningAlgorithm, setIsRunningAlgorithm] = useState(false)
+  const [streamStatus, setStreamStatus] = useState('Idle')
   const [error, setError] = useState<string | null>(null)
   const [algorithmResult, setAlgorithmResult] = useState<AlgorithmResult | null>(null)
   const [comparisonRuns, setComparisonRuns] = useState<AlgorithmRun[]>([])
   const [animatedVisited, setAnimatedVisited] = useState<Coordinate[]>([])
   const [animatedPath, setAnimatedPath] = useState<Coordinate[]>([])
-  const animationTimers = useRef<number[]>([])
+  const streamControl = useRef<SimulationSocketControl | null>(null)
+  const streamedVisited = useRef<Coordinate[]>([])
+  const streamedPath = useRef<Coordinate[]>([])
 
   const visitedCells = useMemo(
     () => new Set(animatedVisited.map(([row, col]) => cellKey(row, col))),
@@ -44,44 +46,79 @@ function App() {
   )
 
   useEffect(() => {
-    return () => clearAnimationTimers()
+    return () => closeActiveStream()
   }, [])
 
-  function clearAnimationTimers() {
-    for (const timer of animationTimers.current) {
-      window.clearTimeout(timer)
-    }
-    animationTimers.current = []
+  function closeActiveStream() {
+    streamControl.current?.close()
+    streamControl.current = null
   }
 
   function resetVisualization() {
-    clearAnimationTimers()
+    closeActiveStream()
+    streamedVisited.current = []
+    streamedPath.current = []
+    setAlgorithmResult(null)
+    setAnimatedVisited([])
+    setAnimatedPath([])
+    setStreamStatus('Idle')
+  }
+
+  function resetStreamPlayback() {
+    streamedVisited.current = []
+    streamedPath.current = []
     setAlgorithmResult(null)
     setAnimatedVisited([])
     setAnimatedPath([])
   }
 
-  function playAlgorithmAnimation(result: AlgorithmResult) {
-    clearAnimationTimers()
-    setAnimatedVisited([])
-    setAnimatedPath([])
+  function handleSimulationEvent(event: SimulationEvent) {
+    if (event.event === 'visit') {
+      streamedVisited.current = [...streamedVisited.current, event.cell]
+      setAnimatedVisited(streamedVisited.current)
+      setAlgorithmResult({
+        visited_order: streamedVisited.current,
+        path: streamedPath.current,
+        nodes_explored: streamedVisited.current.length,
+        execution_ms: 0,
+      })
+      return
+    }
 
-    result.visited_order.forEach((cell, index) => {
-      const timer = window.setTimeout(() => {
-        setAnimatedVisited((current) => [...current, cell])
-      }, index * ANIMATION_STEP_MS)
-      animationTimers.current.push(timer)
-    })
+    if (event.event === 'path') {
+      streamedPath.current = [...streamedPath.current, event.cell]
+      setAnimatedPath(streamedPath.current)
+      setAlgorithmResult({
+        visited_order: streamedVisited.current,
+        path: streamedPath.current,
+        nodes_explored: streamedVisited.current.length,
+        execution_ms: 0,
+      })
+      return
+    }
 
-    // The final path starts only after exploration completes, making the two
-    // phases legible: blue search frontier first, yellow solution second.
-    const pathStartDelay = result.visited_order.length * ANIMATION_STEP_MS
-    result.path.forEach((cell, index) => {
-      const timer = window.setTimeout(() => {
-        setAnimatedPath((current) => [...current, cell])
-      }, pathStartDelay + index * ANIMATION_STEP_MS)
-      animationTimers.current.push(timer)
-    })
+    if (event.event === 'error') {
+      setError(event.message)
+      setIsRunningAlgorithm(false)
+      setStreamStatus('Error')
+      closeActiveStream()
+      return
+    }
+
+    const completedResult: AlgorithmResult = {
+      visited_order: streamedVisited.current,
+      path: streamedPath.current,
+      nodes_explored: event.nodes_explored ?? streamedVisited.current.length,
+      execution_ms: event.execution_ms ?? 0,
+    }
+
+    setAlgorithmResult(completedResult)
+    setComparisonRuns((current) => [
+      { algorithm: selectedAlgorithm, ...completedResult },
+      ...current.filter((run) => run.algorithm !== selectedAlgorithm),
+    ])
+    setIsRunningAlgorithm(false)
+    setStreamStatus('Complete')
   }
 
   async function handleStartSimulation() {
@@ -108,33 +145,39 @@ function App() {
     }
   }
 
-  async function handleRunAlgorithm() {
+  function handleRunAlgorithm() {
     if (!maze) {
       setError('Generate a maze before running an algorithm.')
       return
     }
 
+    resetVisualization()
     setIsRunningAlgorithm(true)
     setError(null)
-    resetVisualization()
+    setStreamStatus('Connecting')
 
-    try {
-      const result = await runAlgorithm(selectedAlgorithm, { grid: maze.grid })
-      setAlgorithmResult(result)
-      setComparisonRuns((current) => [
-        { algorithm: selectedAlgorithm, ...result },
-        ...current.filter((run) => run.algorithm !== selectedAlgorithm),
-      ])
-      playAlgorithmAnimation(result)
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : `Unable to run ${ALGORITHM_LABELS[selectedAlgorithm]} right now.`,
-      )
-    } finally {
-      setIsRunningAlgorithm(false)
-    }
+    streamControl.current = connectSimulationSocket({
+      algorithm: selectedAlgorithm,
+      grid: maze.grid,
+      onOpen: () => {
+        setError(null)
+        setStreamStatus('Streaming')
+      },
+      onReconnect: (attempt) => {
+        resetStreamPlayback()
+        setError(null)
+        setStreamStatus(`Reconnecting (${attempt})`)
+      },
+      onEvent: handleSimulationEvent,
+      onError: (message) => {
+        setError(message)
+        setStreamStatus('Error')
+      },
+      onClose: () => {
+        streamControl.current = null
+        setIsRunningAlgorithm(false)
+      },
+    })
   }
 
   return (
@@ -151,7 +194,7 @@ function App() {
             </h1>
 
             <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-              Generate a maze, choose a classical solver, and watch exploration and final path playback on the same grid.
+              Generate a maze, choose a classical solver, and watch WebSocket events paint exploration and final path in real time.
             </p>
           </div>
 
@@ -218,6 +261,10 @@ function App() {
                 <div className="flex items-center justify-between gap-4">
                   <dt>Algorithm</dt>
                   <dd className="font-medium text-slate-100">{ALGORITHM_LABELS[selectedAlgorithm]}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt>Stream</dt>
+                  <dd className="font-medium text-cyan-200">{streamStatus}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <dt>Nodes explored</dt>
