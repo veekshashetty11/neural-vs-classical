@@ -45,16 +45,25 @@ class QLearningAgent:
             self.q_table[state] = {action: 0.0 for action in ACTIONS}
         return self.q_table[state]
 
-    def select_action(self, state: Cell) -> Action:
+    def confidence(self, state: Cell) -> float:
+        """Return the gap between the best and second-best action values."""
+
+        ranked_values = sorted(self.q_values(state).values(), reverse=True)
+        if len(ranked_values) < 2:
+            return 0.0
+        return ranked_values[0] - ranked_values[1]
+
+    def select_action(self, state: Cell) -> tuple[Action, str, float]:
         """Select an action using epsilon-greedy exploration."""
 
+        confidence = self.confidence(state)
         if self.rng.random() < self.epsilon:
-            return self.rng.choice(ACTIONS)
+            return self.rng.choice(ACTIONS), "exploration", confidence
 
         values = self.q_values(state)
         best_value = max(values.values())
         best_actions = [action for action, value in values.items() if value == best_value]
-        return self.rng.choice(best_actions)
+        return self.rng.choice(best_actions), "exploitation", confidence
 
     def step(self, state: Cell, action: Action) -> tuple[Cell, int, bool]:
         """Apply an action and return next state, reward, and terminal flag."""
@@ -93,14 +102,22 @@ class QLearningAgent:
         events: list[dict[str, object]] = []
 
         for step_number in range(1, max_steps + 1):
-            action = self.select_action(state)
+            action, decision_type, confidence = self.select_action(state)
+            events.append(
+                {
+                    "event": "decision",
+                    "action": action,
+                    "decision_type": decision_type,
+                    "confidence": round(confidence, 4),
+                }
+            )
+            events.append({"event": "q_values", "state": state, "values": self.q_values(state)})
             next_state, reward, done = self.step(state, action)
             self.update(state, action, reward, next_state)
 
             state = next_state
             total_reward += reward
             events.append({"event": "agent_move", "position": state})
-            events.append({"event": "q_values", "state": state, "values": self.q_values(state)})
 
             if done:
                 self.decay_epsilon()

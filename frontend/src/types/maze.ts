@@ -63,6 +63,12 @@ export type QValues = Record<RLAction, number>
 
 export type RLTrainingEvent =
   | { event: 'episode_start'; episode: number }
+  | {
+      event: 'decision'
+      action: RLAction
+      decision_type: 'exploration' | 'exploitation'
+      confidence: number
+    }
   | { event: 'agent_move'; position: Coordinate }
   | { event: 'q_values'; state: Coordinate; values: QValues }
   | { event: 'episode_complete'; episode: number; steps: number; reward: number }

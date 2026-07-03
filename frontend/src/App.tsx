@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CartesianGrid,
+  Bar,
+  BarChart,
+  Cell,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -24,6 +27,7 @@ import type {
   Coordinate,
   MazeGenerateResponse,
   QValues,
+  RLAction,
   RLTrainingEvent,
   SimulationEvent,
   TrainingEpisodePoint,
@@ -64,6 +68,9 @@ function App() {
   const [currentReward, setCurrentReward] = useState<number | null>(null)
   const [agentPosition, setAgentPosition] = useState<Coordinate | null>(null)
   const [qValues, setQValues] = useState<QValues>(EMPTY_Q_VALUES)
+  const [selectedAction, setSelectedAction] = useState<RLAction | null>(null)
+  const [decisionType, setDecisionType] = useState<'exploration' | 'exploitation' | null>(null)
+  const [confidence, setConfidence] = useState(0)
   const [trainingHistory, setTrainingHistory] = useState<TrainingEpisodePoint[]>([])
   const streamControl = useRef<SimulationSocketControl | null>(null)
   const trainingControl = useRef<RLTrainingSocketControl | null>(null)
@@ -79,6 +86,25 @@ function App() {
     () => new Set(animatedPath.map(([row, col]) => cellKey(row, col))),
     [animatedPath],
   )
+  const qValueBars = useMemo(
+    () =>
+      Object.entries(qValues).map(([action, value]) => ({
+        action: action as RLAction,
+        value,
+      })),
+    [qValues],
+  )
+  const confidencePercent = Math.min(100, Math.max(0, confidence * 10))
+  const confidenceColor =
+    confidence < 1 ? 'bg-rose-400' : confidence < 5 ? 'bg-yellow-300' : 'bg-emerald-400'
+  const confidenceLabel =
+    confidence < 1 ? 'Low confidence' : confidence < 5 ? 'Medium confidence' : 'High confidence'
+  const decisionExplanation =
+    selectedAction === null || decisionType === null
+      ? 'Train the agent to inspect its next decision.'
+      : decisionType === 'exploration'
+        ? `Agent selected ${selectedAction} due to epsilon-greedy exploration.`
+        : `Agent selected ${selectedAction} because it has the highest estimated future reward.`
 
   useEffect(() => {
     return () => {
@@ -115,6 +141,9 @@ function App() {
     setCurrentReward(null)
     setAgentPosition(maze?.start ?? null)
     setQValues(EMPTY_Q_VALUES)
+    setSelectedAction(null)
+    setDecisionType(null)
+    setConfidence(0)
     setTrainingHistory([])
     setTrainingStatus('Idle')
   }
@@ -187,6 +216,13 @@ function App() {
 
     if (event.event === 'agent_move') {
       setAgentPosition(event.position)
+      return
+    }
+
+    if (event.event === 'decision') {
+      setSelectedAction(event.action)
+      setDecisionType(event.decision_type)
+      setConfidence(event.confidence)
       return
     }
 
@@ -522,15 +558,65 @@ function App() {
           </section>
 
           <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-5">
-            <h2 className="text-lg font-semibold text-white">Live Q-Values</h2>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-              {Object.entries(qValues).map(([action, value]) => (
-                <div key={action} className="rounded-md border border-slate-800 bg-slate-950/60 p-3">
-                  <div className="font-semibold text-slate-300">{action}</div>
-                  <div className="mt-1 text-lg font-semibold text-white">{value.toFixed(2)}</div>
-                </div>
-              ))}
+            <h2 className="text-lg font-semibold text-white">Explainability</h2>
+            <div className="mt-5 h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={qValueBars} margin={{ top: 8, right: 4, bottom: 0, left: -24 }}>
+                  <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="action" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#020617',
+                      border: '1px solid #334155',
+                      borderRadius: 8,
+                      color: '#e2e8f0',
+                    }}
+                  />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                    {qValueBars.map((bar) => (
+                      <Cell
+                        key={bar.action}
+                        fill={bar.action === selectedAction ? '#f0abfc' : '#22d3ee'}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
+
+            <dl className="mt-5 space-y-4 text-sm text-slate-300">
+              <Metric
+                label="Decision Type"
+                value={
+                  decisionType === null
+                    ? '-'
+                    : decisionType === 'exploration'
+                      ? 'Exploration'
+                      : 'Exploitation'
+                }
+                accent="text-fuchsia-100"
+              />
+              <Metric label="Selected action" value={selectedAction ?? '-'} />
+            </dl>
+
+            <div className="mt-5">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium text-slate-300">Confidence Meter</span>
+                <span className="font-semibold text-slate-100">{confidence.toFixed(2)}</span>
+              </div>
+              <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${confidenceColor}`}
+                  style={{ width: `${confidencePercent}%` }}
+                />
+              </div>
+              <div className="mt-2 text-xs font-medium text-slate-400">{confidenceLabel}</div>
+            </div>
+
+            <p className="mt-5 rounded-md border border-slate-800 bg-slate-950/60 p-3 text-sm leading-6 text-slate-300">
+              {decisionExplanation}
+            </p>
           </section>
         </aside>
 
