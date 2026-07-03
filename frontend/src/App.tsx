@@ -33,6 +33,7 @@ function App() {
   const [animatedVisited, setAnimatedVisited] = useState<Coordinate[]>([])
   const [animatedPath, setAnimatedPath] = useState<Coordinate[]>([])
   const streamControl = useRef<SimulationSocketControl | null>(null)
+  const simulationStartedAt = useRef<number | null>(null)
   const streamedVisited = useRef<Coordinate[]>([])
   const streamedPath = useRef<Coordinate[]>([])
 
@@ -52,6 +53,7 @@ function App() {
   function closeActiveStream() {
     streamControl.current?.close()
     streamControl.current = null
+    simulationStartedAt.current = null
   }
 
   function resetVisualization() {
@@ -108,8 +110,9 @@ function App() {
     const completedResult: AlgorithmResult = {
       visited_order: streamedVisited.current,
       path: streamedPath.current,
-      nodes_explored: event.nodes_explored ?? streamedVisited.current.length,
-      execution_ms: event.execution_ms ?? 0,
+      nodes_explored: streamedVisited.current.length,
+      execution_ms:
+        simulationStartedAt.current === null ? 0 : performance.now() - simulationStartedAt.current,
     }
 
     setAlgorithmResult(completedResult)
@@ -160,6 +163,7 @@ function App() {
       algorithm: selectedAlgorithm,
       grid: maze.grid,
       onOpen: () => {
+        simulationStartedAt.current = performance.now()
         setError(null)
         setStreamStatus('Streaming')
       },

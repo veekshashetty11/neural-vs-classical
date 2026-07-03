@@ -41,6 +41,7 @@ export function connectSimulationSocket(
   }
 
   function connect() {
+    completed = false
     socket = new WebSocket(`${websocketBaseUrl()}/ws/simulation`)
 
     socket.addEventListener('open', () => {
@@ -49,10 +50,16 @@ export function connectSimulationSocket(
     })
 
     socket.addEventListener('message', (message) => {
-      const event = JSON.parse(message.data) as SimulationEvent
-      options.onEvent(event)
-      if (event.event === 'complete') {
+      try {
+        const event = JSON.parse(message.data) as SimulationEvent
+        options.onEvent(event)
+        if (event.event === 'complete') {
+          completed = true
+        }
+      } catch {
         completed = true
+        options.onError('Simulation stream sent an unreadable event.')
+        socket?.close()
       }
     })
 

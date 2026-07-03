@@ -10,8 +10,10 @@ A real-time platform where classical pathfinding algorithms and reinforcement le
 - `GET /health` readiness endpoint
 - `POST /maze/generate` random maze generation endpoint
 - Shared grid environment contract for future solvers
+- Classical BFS, DFS, Dijkstra, and A* solvers
+- `WS /ws/simulation` real-time solver visualization stream
 
-Algorithms, reinforcement learning agents, WebSocket racing, and the future C core are intentionally left for later stages.
+Reinforcement learning agents, multi-agent racing, and the future C core are intentionally left for later stages.
 
 ## Project Structure
 
@@ -39,6 +41,26 @@ Generate maze:
 curl -X POST http://localhost:8000/maze/generate \
   -H "Content-Type: application/json" \
   -d '{"rows":20,"cols":20,"obstacle_density":0.25}'
+```
+
+Stream a solver run over WebSockets:
+
+```text
+WS /ws/simulation
+```
+
+Send one setup payload after connecting:
+
+```json
+{"algorithm":"astar","grid":[[0,0],[0,0]]}
+```
+
+The server emits events as cells are visualized:
+
+```json
+{"event":"visit","cell":[0,0]}
+{"event":"path","cell":[1,1]}
+{"event":"complete"}
 ```
 
 ## Frontend

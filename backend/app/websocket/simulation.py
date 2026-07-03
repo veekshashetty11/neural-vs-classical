@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError, field_validator
 from app.models.algorithm import AlgorithmRequest, environment_from_grid
 from app.services.solver_registry import get_solver
 
-STREAM_DELAY_SECONDS = 0.1
+STREAM_DELAY_SECONDS = 0.03
 
 router = APIRouter(tags=["simulation websocket"])
 
@@ -37,7 +37,7 @@ async def stream_simulation(websocket: WebSocket) -> None:
 
     The client sends one setup message containing the algorithm name and grid.
     The server then emits one `visit` event per explored cell, one `path` event
-    per final-path cell, and a final `complete` event with summary metrics.
+    per final-path cell, and a final `complete` event.
     """
 
     await websocket.accept()
@@ -56,14 +56,7 @@ async def stream_simulation(websocket: WebSocket) -> None:
             await websocket.send_json({"event": "path", "cell": cell})
             await asyncio.sleep(STREAM_DELAY_SECONDS)
 
-        await websocket.send_json(
-            {
-                "event": "complete",
-                "nodes_explored": result.nodes_explored,
-                "path_length": len(result.path),
-                "execution_ms": result.execution_ms,
-            }
-        )
+        await websocket.send_json({"event": "complete"})
     except WebSocketDisconnect:
         # A user may generate a new maze, change algorithms, or close the tab
         # while a stream is active. No cleanup is needed beyond ending the task.
