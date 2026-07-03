@@ -2,13 +2,19 @@ import type { Coordinate, MazeGenerateResponse } from '../types/maze'
 
 interface MazeGridProps {
   maze: MazeGenerateResponse
+  pathCells?: Set<string>
+  visitedCells?: Set<string>
+}
+
+export function cellKey(row: number, col: number) {
+  return `${row},${col}`
 }
 
 function sameCell(a: Coordinate, row: number, col: number) {
   return a[0] === row && a[1] === col
 }
 
-export function MazeGrid({ maze }: MazeGridProps) {
+export function MazeGrid({ maze, pathCells = new Set(), visitedCells = new Set() }: MazeGridProps) {
   const columnCount = maze.grid[0]?.length ?? 0
 
   return (
@@ -22,24 +28,31 @@ export function MazeGrid({ maze }: MazeGridProps) {
       >
         {maze.grid.map((rowCells, row) =>
           rowCells.map((cell, col) => {
+            const key = cellKey(row, col)
             const isStart = sameCell(maze.start, row, col)
             const isGoal = sameCell(maze.goal, row, col)
             const isWall = cell === 1
+            const isPath = pathCells.has(key)
+            const isVisited = visitedCells.has(key)
 
             const cellClass = isStart
               ? 'bg-emerald-400 shadow-emerald-400/40'
               : isGoal
                 ? 'bg-rose-500 shadow-rose-500/40'
-                : isWall
-                  ? 'bg-slate-500'
-                  : 'bg-slate-900 hover:bg-slate-800'
+                : isPath
+                  ? 'bg-yellow-300 shadow-yellow-300/50'
+                  : isVisited
+                    ? 'bg-blue-500 shadow-blue-500/40'
+                    : isWall
+                      ? 'bg-slate-500'
+                      : 'bg-slate-900 hover:bg-slate-800'
 
             return (
               <button
-                key={`${row}-${col}`}
+                key={key}
                 type="button"
-                className={`aspect-square rounded-[3px] shadow-sm transition ${cellClass}`}
-                aria-label={`Cell ${row}, ${col}${isStart ? ', start' : isGoal ? ', goal' : isWall ? ', wall' : ', empty'}`}
+                className={`aspect-square rounded-[3px] shadow-sm transition-colors duration-150 ${cellClass}`}
+                aria-label={`Cell ${row}, ${col}${isStart ? ', start' : isGoal ? ', goal' : isPath ? ', final path' : isVisited ? ', visited' : isWall ? ', wall' : ', empty'}`}
               />
             )
           }),

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.algorithms import router as algorithms_router
 from app.api.maze import router as maze_router
 
 # FastAPI owns the HTTP and future WebSocket surface for the platform. Keeping
@@ -29,6 +30,7 @@ app.add_middleware(
 # API routers stay isolated from app creation so each feature can grow behind a
 # clear URL prefix as the platform adds solvers, replays, and WebSockets.
 app.include_router(maze_router)
+app.include_router(algorithms_router)
 
 
 @app.get("/health")

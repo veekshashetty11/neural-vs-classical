@@ -1,21 +1,78 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { MazeGrid } from './components/MazeGrid'
+import { MazeGrid, cellKey } from './components/MazeGrid'
+import { runAstar } from './services/algorithmApi'
 import { generateMaze } from './services/mazeApi'
-import type { MazeGenerateResponse } from './types/maze'
+import type { AlgorithmResult, Coordinate, MazeGenerateResponse } from './types/maze'
+
+const ANIMATION_STEP_MS = 100
 
 function App() {
   const [maze, setMaze] = useState<MazeGenerateResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isRunningAlgorithm, setIsRunningAlgorithm] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [algorithmResult, setAlgorithmResult] = useState<AlgorithmResult | null>(null)
+  const [animatedVisited, setAnimatedVisited] = useState<Coordinate[]>([])
+  const [animatedPath, setAnimatedPath] = useState<Coordinate[]>([])
+  const animationTimers = useRef<number[]>([])
+
+  const visitedCells = useMemo(
+    () => new Set(animatedVisited.map(([row, col]) => cellKey(row, col))),
+    [animatedVisited],
+  )
+  const pathCells = useMemo(
+    () => new Set(animatedPath.map(([row, col]) => cellKey(row, col))),
+    [animatedPath],
+  )
+
+  useEffect(() => {
+    return () => clearAnimationTimers()
+  }, [])
+
+  function clearAnimationTimers() {
+    for (const timer of animationTimers.current) {
+      window.clearTimeout(timer)
+    }
+    animationTimers.current = []
+  }
+
+  function resetVisualization() {
+    clearAnimationTimers()
+    setAlgorithmResult(null)
+    setAnimatedVisited([])
+    setAnimatedPath([])
+  }
+
+  function playAlgorithmAnimation(result: AlgorithmResult) {
+    clearAnimationTimers()
+    setAnimatedVisited([])
+    setAnimatedPath([])
+
+    result.visited_order.forEach((cell, index) => {
+      const timer = window.setTimeout(() => {
+        setAnimatedVisited((current) => [...current, cell])
+      }, index * ANIMATION_STEP_MS)
+      animationTimers.current.push(timer)
+    })
+
+    // The final path starts only after exploration completes, making the two
+    // phases legible: blue search frontier first, yellow solution second.
+    const pathStartDelay = result.visited_order.length * ANIMATION_STEP_MS
+    result.path.forEach((cell, index) => {
+      const timer = window.setTimeout(() => {
+        setAnimatedPath((current) => [...current, cell])
+      }, pathStartDelay + index * ANIMATION_STEP_MS)
+      animationTimers.current.push(timer)
+    })
+  }
 
   async function handleStartSimulation() {
     setIsLoading(true)
     setError(null)
+    resetVisualization()
 
     try {
-      // Stage 1 starts with a 20x20 maze because it is large enough to show
-      // structure while still fitting comfortably on laptops and tablets.
       const nextMaze = await generateMaze({
         rows: 20,
         cols: 20,
@@ -33,6 +90,29 @@ function App() {
     }
   }
 
+  async function handleRunAstar() {
+    if (!maze) {
+      setError('Generate a maze before running A*.')
+      return
+    }
+
+    setIsRunningAlgorithm(true)
+    setError(null)
+    resetVisualization()
+
+    try {
+      const result = await runAstar({ grid: maze.grid })
+      setAlgorithmResult(result)
+      playAlgorithmAnimation(result)
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error ? caughtError.message : 'Unable to run A* right now.',
+      )
+    } finally {
+      setIsRunningAlgorithm(false)
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#05070b] text-slate-100">
       <section className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-10 sm:px-10 lg:py-14">
@@ -47,18 +127,28 @@ function App() {
             </h1>
 
             <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-              Generate a maze environment now. Classical solvers, reinforcement learning agents, and live racing will plug into this same grid contract later.
+              Generate a maze, then watch A* explore the grid and trace the final path with a timed visualization.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleStartSimulation}
-            disabled={isLoading}
-            className="w-full rounded-lg bg-cyan-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-400/20 transition hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-[#05070b] disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300 sm:w-auto sm:text-base"
-          >
-            {isLoading ? 'Generating Maze...' : 'Start Simulation'}
-          </button>
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+            <button
+              type="button"
+              onClick={handleStartSimulation}
+              disabled={isLoading || isRunningAlgorithm}
+              className="rounded-lg bg-cyan-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-400/20 transition hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-[#05070b] disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300 sm:text-base"
+            >
+              {isLoading ? 'Generating Maze...' : 'Start Simulation'}
+            </button>
+            <button
+              type="button"
+              onClick={handleRunAstar}
+              disabled={!maze || isLoading || isRunningAlgorithm}
+              className="rounded-lg border border-yellow-300/50 bg-yellow-300/10 px-6 py-3 text-sm font-semibold text-yellow-100 transition hover:bg-yellow-300/20 focus:outline-none focus:ring-2 focus:ring-yellow-200 focus:ring-offset-2 focus:ring-offset-[#05070b] disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500 sm:text-base"
+            >
+              {isRunningAlgorithm ? 'Running A*...' : 'Run A*'}
+            </button>
+          </div>
         </header>
 
         <section className="grid flex-1 gap-8 py-8 lg:grid-cols-[280px_1fr] lg:items-start">
@@ -82,6 +172,28 @@ function App() {
                 <dd className="font-medium text-rose-300">[19, 19]</dd>
               </div>
             </dl>
+
+            <h2 className="mt-8 text-lg font-semibold text-white">A* Metrics</h2>
+            <dl className="mt-5 space-y-4 text-sm text-slate-300">
+              <div className="flex items-center justify-between gap-4">
+                <dt>Nodes explored</dt>
+                <dd className="font-medium text-slate-100">
+                  {algorithmResult?.nodes_explored ?? '-'}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt>Path length</dt>
+                <dd className="font-medium text-slate-100">
+                  {algorithmResult?.path.length ?? '-'}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt>Execution time</dt>
+                <dd className="font-medium text-slate-100">
+                  {algorithmResult ? `${algorithmResult.execution_ms.toFixed(2)} ms` : '-'}
+                </dd>
+              </div>
+            </dl>
           </aside>
 
           <div className="flex min-h-[420px] items-center justify-center">
@@ -90,7 +202,7 @@ function App() {
                 {error}
               </div>
             ) : maze ? (
-              <MazeGrid maze={maze} />
+              <MazeGrid maze={maze} pathCells={pathCells} visitedCells={visitedCells} />
             ) : (
               <div className="w-full rounded-lg border border-dashed border-slate-700 bg-slate-900/30 p-10 text-center text-slate-300">
                 Press Start Simulation to generate the first maze.
