@@ -6,10 +6,10 @@ A real-time platform where classical pathfinding algorithms and reinforcement le
 
 - React + TypeScript + Vite frontend
 - TailwindCSS dark interface
-- FastAPI backend
-- CORS configured for local frontend development
-- `/health` endpoint
-- Maze environment and random maze generation API
+- FastAPI backend with CORS configured for local frontend development
+- `GET /health` readiness endpoint
+- `POST /maze/generate` random maze generation endpoint
+- Shared grid environment contract for future solvers
 
 Algorithms, reinforcement learning agents, WebSocket racing, and the future C core are intentionally left for later stages.
 
@@ -33,6 +33,14 @@ uvicorn app.main:app --reload
 
 Health check: `GET http://localhost:8000/health`
 
+Generate maze:
+
+```bash
+curl -X POST http://localhost:8000/maze/generate \
+  -H "Content-Type: application/json" \
+  -d '{"rows":20,"cols":20,"obstacle_density":0.25}'
+```
+
 ## Frontend
 
 ```bash
@@ -42,3 +50,5 @@ npm run dev
 ```
 
 Frontend dev server: `http://localhost:5173`
+
+Set `VITE_API_BASE_URL` if the FastAPI server is not running on `http://localhost:8000`.
